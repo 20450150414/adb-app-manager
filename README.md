@@ -210,7 +210,6 @@ adb-app-manager/
 ├── README.md
 ├── LICENSE                   # MIT
 ├── .gitignore
-├── CONTRACT.md               # 团队内部开发契约
 ├── lib/
 │   ├── adb.mjs               # adb 探测与子进程封装
 │   ├── store.mjs             # config / history 读写
@@ -221,7 +220,7 @@ adb-app-manager/
 │   └── app.js
 ├── docs/
 │   ├── USB调试指南.md
-│   └── screenshots/main.png  # 截图占位
+│   └── screenshots/main.png  # 主界面截图
 └── data/                     # 运行时生成，已被 .gitignore 忽略
     ├── config.json
     └── history.json
