@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang='zh-CN' data-theme='dark'>
+<head>
+  <meta charset='utf-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <meta name='color-scheme' content='dark light'>
+  <title>ADB 预装应用管理器</title>
+  <link rel='stylesheet' href='styles.css'>
+</head>
+<body>
+  <div id='appShell'>
+    <header class='topbar'>
+      <div class='brand'>
+        <button id='sidebarToggle' class='icon-btn only-mobile' type='button' aria-label='展开筛选栏'>
+          <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' aria-hidden='true'><path d='M4 7h16M4 12h16M4 17h16'/></svg>
+        </button>
+        <div class='brand-mark' aria-hidden='true'>
+          <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'><rect x='7' y='2.8' width='10' height='18.4' rx='2.2'/><path d='M10 5.4h4M10.5 18.6h3M9.8 9.2h4.4M9.8 12h4.4'/></svg>
+        </div>
+        <div class='brand-copy'>
+          <h1>ADB 预装应用管理器</h1>
+          <p>本机 ADB · user 0 · 可恢复</p>
+        </div>
+      </div>
+
+      <div class='top-status'>
+        <div id='adbBadge' class='status-badge is-idle' title='正在检查 ADB 状态'>
+          <span class='status-dot'></span>
+          <div class='status-copy'><strong>正在检查 ADB</strong><span>路径 / 版本读取中</span></div>
+        </div>
+
+        <label class='select-wrap' aria-label='选择设备'>
+          <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><rect x='7' y='3' width='10' height='18' rx='2'/><path d='M10 6h4M11 18h2'/></svg>
+          <select id='deviceSelect' class='device-select'></select>
+        </label>
+
+        <button id='refreshBtn' class='btn btn-ghost mutation' type='button'>
+          <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M20 11a8 8 0 1 0-2.3 6.3'/><path d='M20 5v6h-6'/></svg>
+          刷新
+        </button>
+
+        <span id='demoBadge' class='badge demo' hidden>演示模式</span>
+
+        <button id='themeBtn' class='icon-btn' type='button' aria-label='切换主题' title='切换深色 / 浅色主题'>
+          <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4'/><circle cx='12' cy='12' r='3.4'/></svg>
+        </button>
+
+        <button id='settingsBtn' class='icon-btn' type='button' aria-label='打开设置' title='设置'>
+          <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><circle cx='12' cy='12' r='3.2'/><path d='M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.5 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.5a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.5 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.14.36.39.67.72.88.3.2.66.31 1.02.32H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z'/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div id='globalLoading' class='global-loading' hidden>
+      <span class='spinner'></span>
+      <span id='globalLoadingText'>正在加载本机服务…</span>
+    </div>
+
+    <div id='sidebarBackdrop' class='sidebar-backdrop'></div>
+
+    <div class='layout'>
+      <aside id='sidebar' class='sidebar' aria-label='筛选与预设方案'>
+        <div class='sidebar-head'>
+          <strong>筛选与方案</strong>
+          <button id='sidebarCloseBtn' class='icon-btn sidebar-close' type='button' aria-label='收起筛选栏'>
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' aria-hidden='true'><path d='M6 6l12 12M18 6L6 18'/></svg>
+          </button>
+        </div>
+
+        <section class='card guide-card'>
+          <div class='section-title'>
+            <span class='title-icon'>
+              <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 3v7M8 6l4-3 4 3M7 10h10v9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-9Z'/><path d='M10 14h4M10 17h4'/></svg>
+            </span>
+            <div><h2>USB 调试连接</h2><p>按顺序完成即可读取应用清单</p></div>
+          </div>
+          <ol class='guide-steps'>
+            <li><span>1</span><div><strong>开启开发者选项</strong><small>设置 → 关于手机 → 连续点按版本号</small></div></li>
+            <li><span>2</span><div><strong>启用 USB 调试</strong><small>开发者选项 → USB 调试</small></div></li>
+            <li><span>3</span><div><strong>连接并授权</strong><small>解锁屏幕，确认 RSA 授权弹窗</small></div></li>
+            <li><span>4</span><div><strong>回到本页刷新</strong><small>设备状态显示 device 后开始管理</small></div></li>
+          </ol>
+        </section>
+
+        <section class='card filter-card'>
+          <div class='section-title compact'>
+            <div><h2>筛选</h2><p>Ctrl+F 可快速定位搜索框</p></div>
+            <button id='clearFiltersBtn' class='text-btn' type='button'>重置</button>
+          </div>
+
+          <label class='field-label' for='searchInput'>搜索应用</label>
+          <div class='search-box'>
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' aria-hidden='true'><circle cx='11' cy='11' r='7'/><path d='M20 20l-3.6-3.6'/></svg>
+            <input id='searchInput' type='search' placeholder='搜索应用名或包名…' autocomplete='off' spellcheck='false'>
+          </div>
+
+          <div class='filter-group'>
+            <h3>来源</h3>
+            <div id='sourceFilters' class='chip-list'></div>
+          </div>
+
+          <div class='filter-group'>
+            <h3>风险</h3>
+            <div id='riskFilters' class='check-list'></div>
+          </div>
+
+          <div class='filter-group'>
+            <h3>厂商 <small>未勾选表示全部</small></h3>
+            <div id='vendorFilters' class='check-list vendor-list'></div>
+          </div>
+        </section>
+
+        <section class='card preset-card'>
+          <div class='section-title compact'>
+            <div><h2>预设方案</h2><p>点击勾选方案内仍已安装的包</p></div>
+            <span id='presetCount' class='pill'>0 组</span>
+          </div>
+          <div id='presetList' class='preset-list'></div>
+        </section>
+      </aside>
+
+      <main class='main'>
+        <section id='emptyState' class='empty-state'>
+          <div class='empty-card'>
+            <span class='spinner large'></span>
+            <h2>正在连接本机服务</h2>
+            <p>读取 ADB 状态、设备列表与应用目录中…</p>
+          </div>
+        </section>
+
+        <section id='contentPanel' class='content-panel' hidden>
+          <div id='statsRow' class='stats-row'></div>
+
+          <div class='toolbar card'>
+            <div class='toolbar-copy'>
+              <h2>应用清单</h2>
+              <p id='resultSummary'>正在计算筛选结果…</p>
+            </div>
+            <div class='toolbar-actions'>
+              <label class='inline-field'>排序
+                <select id='sortSelect' class='control-select'>
+                  <option value='risk-asc'>风险从高到低</option>
+                  <option value='risk-desc'>风险从低到高</option>
+                  <option value='label-asc'>应用名 A → Z</option>
+                  <option value='label-desc'>应用名 Z → A</option>
+                  <option value='pkg-asc'>包名 A → Z</option>
+                  <option value='pkg-desc'>包名 Z → A</option>
+                  <option value='partition-asc'>来源分区</option>
+                  <option value='vendor-asc'>厂商</option>
+                  <option value='state-asc'>状态</option>
+                </select>
+              </label>
+              <label class='check-all'><input id='selectAllCheckbox' type='checkbox'> 全选当前页</label>
+              <span id='pageInfo' class='page-info'></span>
+              <button id='prevPageBtn' class='btn btn-ghost btn-sm' type='button'>上一页</button>
+              <button id='nextPageBtn' class='btn btn-ghost btn-sm' type='button'>下一页</button>
+            </div>
+          </div>
+
+          <div class='table-wrap card'>
+            <div id='loadingOverlay' class='loading-overlay' hidden>
+              <span class='spinner large'></span>
+              <strong id='loadingText'>正在采集应用清单…</strong>
+            </div>
+            <table id='appsTable' class='app-table'>
+              <thead id='appsTableHead'>
+                <tr>
+                  <th class='check-cell'><span class='sr-only'>选择</span></th>
+                  <th><button class='th-sort' type='button' data-sort='label'>应用名 <span class='sort-indicator'></span></button></th>
+                  <th><button class='th-sort' type='button' data-sort='pkg'>包名 <span class='sort-indicator'></span></button></th>
+                  <th><button class='th-sort' type='button' data-sort='partition'>来源分区 <span class='sort-indicator'></span></button></th>
+                  <th><button class='th-sort' type='button' data-sort='vendor'>厂商 <span class='sort-indicator'></span></button></th>
+                  <th><button class='th-sort' type='button' data-sort='risk'>风险 <span class='sort-indicator'></span></button></th>
+                  <th><button class='th-sort' type='button' data-sort='state'>状态 <span class='sort-indicator'></span></button></th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id='appsTbody'></tbody>
+            </table>
+            <div id='tableEmpty' class='table-empty' hidden>当前筛选下暂无应用，试试重置筛选或切换来源。</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <footer id='batchBar' class='batch-bar' hidden>
+      <div class='batch-main'>
+        <div class='batch-summary'>
+          <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M9 11l3 3L22 4'/><path d='M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11'/></svg>
+          <div><strong id='selectedCount'>已选 0 项</strong><small>逐包执行，实时查看结果</small></div>
+        </div>
+        <div class='batch-buttons'>
+          <button id='batchUninstallBtn' class='btn btn-danger mutation' type='button'>
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6'/><path d='M10 11v5M14 11v5'/></svg>
+            批量卸载
+          </button>
+          <button id='batchRestoreBtn' class='btn btn-primary mutation' type='button'>
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M3 12a9 9 0 1 0 3-6.7L3 8'/><path d='M3 3v5h5'/></svg>
+            批量恢复
+          </button>
+          <button id='exportPresetBtn' class='btn btn-ghost mutation' type='button'>
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 3v12M7 10l5 5 5-5'/><path d='M5 21h14'/></svg>
+            导出方案 JSON
+          </button>
+          <button id='clearSelectionBtn' class='btn btn-ghost mutation' type='button'>清空选择</button>
+        </div>
+      </div>
+      <div id='batchProgress' class='batch-progress' hidden>
+        <div class='progress-meta'><strong id='batchActionLabel'>批量操作</strong><span id='progressText'>0 / 0</span></div>
+        <div class='progress-track'><div id='progressBar' class='progress-bar'></div></div>
+        <div id='batchResults' class='batch-results'></div>
+      </div>
+    </footer>
+
+    <section id='logDrawer' class='log-drawer collapsed' aria-label='ADB 命令日志'>
+      <header class='log-head'>
+        <button id='logToggle' class='log-toggle' type='button' aria-expanded='false'>
+          <span class='log-title'>
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M4 5h16v14H4z'/><path d='M8 9h8M8 13h5'/></svg>
+            执行日志
+          </span>
+          <span id='logCount' class='pill'>0 条</span>
+          <svg class='chevron' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M6 9l6 6 6-6'/></svg>
+        </button>
+        <div class='log-actions'>
+          <button id='copyLogBtn' class='btn btn-ghost btn-sm' type='button'>
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><rect x='9' y='9' width='11' height='11' rx='2'/><path d='M5 15V5a2 2 0 0 1 2-2h8'/></svg>
+            一键复制
+          </button>
+          <button id='clearLogBtn' class='btn btn-ghost btn-sm' type='button'>清空</button>
+        </div>
+      </header>
+      <div id='logBody' class='log-body'></div>
+    </section>
+
+    <div id='dangerModal' class='modal-backdrop' role='dialog' aria-modal='true' aria-labelledby='dangerTitle' hidden>
+      <div class='modal danger-modal'>
+        <div class='modal-head'>
+          <div class='modal-title'>
+            <span class='warning-icon'>
+              <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 3l9 16H3l9-16Z'/><path d='M12 9v5M12 17h.01'/></svg>
+            </span>
+            <div><h2 id='dangerTitle'>危险操作确认</h2><p>以下项目为 critical / high 风险</p></div>
+          </div>
+          <button id='dangerCloseBtn' class='icon-btn' type='button' aria-label='关闭危险确认'>
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' aria-hidden='true'><path d='M6 6l12 12M18 6L6 18'/></svg>
+          </button>
+        </div>
+        <div class='modal-body'>
+          <p class='modal-lead'>核心组件默认排除，并标记「禁止」。高风险项可逐项确认，操作按单包顺序执行。</p>
+          <div id='dangerList' class='danger-list'></div>
+          <label class='ack-row'><input id='riskAck' type='checkbox'> <span>我已了解风险</span></label>
+          <label class='field-label' for='dangerConfirmInput'>输入「确认卸载」启用操作</label>
+          <input id='dangerConfirmInput' class='danger-input' type='text' placeholder='确认卸载' autocomplete='off' spellcheck='false'>
+          <p id='dangerHint' class='danger-hint'>请勾选风险确认并输入「确认卸载」。</p>
+        </div>
+        <div class='modal-actions'>
+          <button id='dangerCancelBtn' class='btn btn-ghost' type='button'>取消</button>
+          <button id='dangerStartBtn' class='btn btn-danger' type='button' disabled>开始卸载</button>
+        </div>
+      </div>
+    </div>
+
+    <div id='settingsModal' class='modal-backdrop' role='dialog' aria-modal='true' aria-labelledby='settingsTitle' hidden>
+      <div class='modal settings-modal'>
+        <div class='modal-head'>
+          <div class='modal-title'>
+            <span class='title-icon'>
+              <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><circle cx='12' cy='12' r='3.2'/><path d='M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4'/></svg>
+            </span>
+            <div><h2 id='settingsTitle'>设置</h2><p>ADB 路径、超时与界面主题</p></div>
+          </div>
+          <button id='settingsCloseBtn' class='icon-btn' type='button' aria-label='关闭设置'>
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' aria-hidden='true'><path d='M6 6l12 12M18 6L6 18'/></svg>
+          </button>
+        </div>
+        <div class='modal-body'>
+          <div class='settings-grid'>
+            <div class='field'>
+              <label for='adbPathInput'>ADB 路径</label>
+              <input id='adbPathInput' type='text' placeholder='填写 adb 可执行文件完整路径' autocomplete='off' spellcheck='false'>
+              <small>保存后由本机服务校验路径并重新探测。</small>
+            </div>
+            <div class='field'>
+              <label for='timeoutInput'>命令超时（毫秒）</label>
+              <input id='timeoutInput' type='number' min='1000' max='120000' step='1000' value='15000'>
+              <small>范围 1000–120000，采集较慢时可调高。</small>
+            </div>
+          </div>
+          <div class='inline-actions'>
+            <button id='autoDetectBtn' class='btn btn-primary mutation' type='button'>
+              <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><circle cx='11' cy='11' r='7'/><path d='M20 20l-3.6-3.6M11 8v6M8 11h6'/></svg>
+              自动探测
+            </button>
+            <div class='theme-switch'>
+              <span>主题</span>
+              <button id='themeDarkBtn' class='theme-choice active' type='button'>深色</button>
+              <button id='themeLightBtn' class='theme-choice' type='button'>浅色</button>
+            </div>
+          </div>
+          <div class='notice'>
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 3l8 3v6c0 5-3.4 8.2-8 9-4.6-.8-8-4-8-9V6l8-3Z'/><path d='M9 12l2 2 4-4'/></svg>
+            <div><strong>卸载方式说明</strong><p>本工具使用 pm uninstall -k --user 0，卸载结果可用「恢复」还原，system 分区保持原样。</p></div>
+          </div>
+          <p id='settingsStatus' class='settings-status'></p>
+        </div>
+        <div class='modal-actions'>
+          <button id='settingsCancelBtn' class='btn btn-ghost' type='button'>关闭</button>
+          <button id='saveSettingsBtn' class='btn btn-primary mutation' type='button'>保存设置</button>
+        </div>
+      </div>
+    </div>
+
+    <div id='toastContainer' class='toast-container' aria-live='polite'></div>
+  </div>
+  <script src='app.js'></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+# Dependencies and runtime artifacts
+node_modules/
+data/
+dist/
+
+# Local config (config.example.json is the tracked example, keep it)
+config.json
+
+# Logs and OS/editor cruft
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

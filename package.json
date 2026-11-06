@@ -1,0 +1,15 @@
+{
+  "name": "adb-app-manager",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "ADB 预装应用管理器：零第三方依赖的本地 Web 应用",
+  "scripts": {
+    "start": "node server.mjs",
+    "demo": "node server.mjs --demo --open"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {}
+}
