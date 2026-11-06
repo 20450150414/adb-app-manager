@@ -19,6 +19,9 @@ import {
 import {
   CATALOG, PRESETS, CRITICAL_PACKAGES, VENDOR_LABELS, lookup, detectVendor,
 } from './lib/catalog.mjs';
+import {
+  DEFAULT_EXPORTS_ROOT, getApkPaths, pullPackages, getExportRecords, openExportsDir,
+} from './lib/pull.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(ROOT, 'public');
@@ -172,6 +175,7 @@ function healthPayload() {
     demo: DEMO,
     adbError: DEMO ? null : ADB.error,
     config: { timeoutMs: loadConfig().timeoutMs },
+    exportsDir: DEFAULT_EXPORTS_ROOT,
   };
 }
 
@@ -269,7 +273,7 @@ function buildDemoApps() {
     });
   }
   apps.sort(compareApps);
-  return { ok: true, apps };
+  return { ok: true, apps, stats: computeStats(apps) };
 }
 
 async function buildRealApps(serial) {
@@ -303,7 +307,7 @@ async function buildRealApps(serial) {
     });
   }
   apps.sort(compareApps);
-  return { ok: true, apps };
+  return { ok: true, apps, stats: sets.stats || computeStats(apps) };
 }
 
 async function getApps(scope, refresh) {
@@ -319,7 +323,9 @@ async function getApps(scope, refresh) {
   }
   const built = DEMO ? buildDemoApps() : await buildRealApps(serial);
   if (!built.ok) return fail(built.error || '采集应用列表失败');
-  const data = { apps: built.apps, stats: computeStats(built.apps) };
+  // real 模式 stats 直接取 adb 四个集合大小（与 -f / -f -3 / -f -s / -u 行数一致）；
+  // demo 模式由 apps 派生。两者都不随 scope 过滤变化。
+  const data = { apps: built.apps, stats: built.stats || computeStats(built.apps) };
   APPS_CACHE = { key, at: now, data };
   return { ok: true, device, stats: data.stats, apps: filterByScope(data.apps, scope) };
 }
@@ -553,6 +559,51 @@ async function handleDeviceSelect(req, res) {
   return sendJson(res, 200, { ok: true });
 }
 
+// ── APK 提取（业务逻辑见 lib/pull.mjs，此处仅做路由与参数校验） ──────────────
+
+async function handleApkPaths(req, res, url) {
+  const pkg = String(url.searchParams.get('pkg') ?? '').trim();
+  if (!PKG_RE.test(pkg)) return sendJson(res, 200, fail('包名格式不合法'));
+  const got = await requireSerial();
+  if (got.error) return sendJson(res, 200, fail(got.error));
+  const r = await getApkPaths({
+    adbPath: ADB.path, serial: got.serial, pkg,
+    demo: DEMO, timeoutMs: loadConfig().timeoutMs,
+  });
+  return sendJson(res, 200, r);
+}
+
+async function handleApkPull(req, res) {
+  const body = await readBody(req);
+  const parsed = readPackageList(body);
+  if (parsed.error) return sendJson(res, 200, fail(parsed.error));
+  const got = await requireSerial();
+  if (got.error) return sendJson(res, 200, fail(got.error));
+  const r = await pullPackages({
+    adbPath: ADB.path,
+    serial: got.serial,
+    packages: parsed.list,
+    outputDir: Object.prototype.hasOwnProperty.call(body, 'outputDir') ? body.outputDir : null,
+    skipExisting: body.skipExisting !== false,
+    demo: DEMO,
+    timeoutMs: loadConfig().timeoutMs,
+  });
+  return sendJson(res, 200, r);
+}
+
+function handleApkExports(res) {
+  return sendJson(res, 200, getExportRecords({ demo: DEMO }));
+}
+
+async function handleApkOpen(req, res) {
+  const body = await readBody(req);
+  const r = openExportsDir({
+    path: Object.prototype.hasOwnProperty.call(body, 'path') ? body.path : null,
+    demo: DEMO,
+  });
+  return sendJson(res, 200, r);
+}
+
 // ── 静态资源 ─────────────────────────────────────────────────────────────────
 
 const MIME = {
@@ -620,6 +671,10 @@ async function routeApi(req, res, url, method, pathname) {
     case 'POST /api/config': return handleConfigPost(req, res);
     case 'GET /api/catalog': return handleCatalog(res);
     case 'POST /api/device/select': return handleDeviceSelect(req, res);
+    case 'GET /api/apk/paths': return handleApkPaths(req, res, url);
+    case 'POST /api/apk/pull': return handleApkPull(req, res);
+    case 'GET /api/apk/exports': return handleApkExports(res);
+    case 'POST /api/apk/open': return handleApkOpen(req, res);
     default: return sendJson(res, 200, fail(`接口不存在：${method} ${pathname}`));
   }
 }

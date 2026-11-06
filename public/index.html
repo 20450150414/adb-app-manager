@@ -39,6 +39,11 @@
           刷新
         </button>
 
+        <button id='apkExportsBtn' class='btn btn-ghost btn-sm mutation' type='button' title='查看导出记录' aria-label='查看导出记录'>
+          <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M4 7h16v13H4z'/><path d='M3 4h18v3H3z'/><path d='M9 11h6'/></svg>
+          导出记录
+        </button>
+
         <span id='demoBadge' class='badge demo' hidden>演示模式</span>
 
         <button id='themeBtn' class='icon-btn' type='button' aria-label='切换主题' title='切换深色 / 浅色主题'>
@@ -198,6 +203,10 @@
             <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M3 12a9 9 0 1 0 3-6.7L3 8'/><path d='M3 3v5h5'/></svg>
             批量恢复
           </button>
+          <button id='batchApkPullBtn' class='btn btn-extract mutation' type='button'>
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 3v12M7 10l5 5 5-5'/><path d='M5 21h14'/><path d='M4 7V4h16v3'/></svg>
+            批量提取 APK
+          </button>
           <button id='exportPresetBtn' class='btn btn-ghost mutation' type='button'>
             <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 3v12M7 10l5 5 5-5'/><path d='M5 21h14'/></svg>
             导出方案 JSON
@@ -286,11 +295,20 @@
               <input id='timeoutInput' type='number' min='1000' max='120000' step='1000' value='15000'>
               <small>范围 1000–120000，采集较慢时可调高。</small>
             </div>
+            <div class='field export-dir-field'>
+              <label for='exportDirInput'>导出目录</label>
+              <input id='exportDirInput' type='text' placeholder='留空使用默认 exports/&lt;serial&gt;' autocomplete='off' spellcheck='false'>
+              <small>留空表示默认 exports/&lt;serial&gt;；来自 /api/health：<span id='defaultExportsDir'>—</span></small>
+            </div>
           </div>
           <div class='inline-actions'>
             <button id='autoDetectBtn' class='btn btn-primary mutation' type='button'>
               <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><circle cx='11' cy='11' r='7'/><path d='M20 20l-3.6-3.6M11 8v6M8 11h6'/></svg>
               自动探测
+            </button>
+            <button id='settingsOpenExportsBtn' class='btn btn-ghost mutation' type='button'>
+              <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z'/><path d='M3 10h18'/></svg>
+              打开导出文件夹
             </button>
             <div class='theme-switch'>
               <span>主题</span>
@@ -307,6 +325,49 @@
         <div class='modal-actions'>
           <button id='settingsCancelBtn' class='btn btn-ghost' type='button'>关闭</button>
           <button id='saveSettingsBtn' class='btn btn-primary mutation' type='button'>保存设置</button>
+        </div>
+      </div>
+    </div>
+
+    <div id='apkModal' class='modal-backdrop' role='dialog' aria-modal='true' aria-labelledby='apkTitle' hidden>
+      <div class='modal apk-modal'>
+        <div class='modal-head'>
+          <div class='modal-title'>
+            <span class='title-icon'>
+              <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 3v12M7 10l5 5 5-5'/><path d='M5 21h14'/><path d='M4 7V4h16v3'/></svg>
+            </span>
+            <div><h2 id='apkTitle'>APK 提取结果</h2><p>逐包提取状态与文件明细</p></div>
+          </div>
+          <button id='apkCloseBtn' class='icon-btn' type='button' aria-label='关闭提取结果'>
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' aria-hidden='true'><path d='M6 6l12 12M18 6L6 18'/></svg>
+          </button>
+        </div>
+        <div class='modal-body'>
+          <div class='apk-progress-card'>
+            <div class='progress-meta'><strong id='apkProgressText'>准备提取 APK</strong><span id='apkProgressCount'>0 / 0</span></div>
+            <div class='progress-track'><div id='apkProgressBar' class='progress-bar'></div></div>
+            <div class='apk-dir-row'>
+              <div class='apk-dir-info'><span>保存目录</span><code id='apkRootText'>等待提取结果…</code></div>
+              <div class='apk-toolbar'>
+                <button id='apkOpenFolderBtn' class='btn btn-ghost btn-sm mutation' type='button'>
+                  <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z'/><path d='M3 10h18'/></svg>
+                  打开导出文件夹
+                </button>
+                <button id='apkHistoryBtn' class='btn btn-ghost btn-sm mutation' type='button'>
+                  <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M4 7h16v13H4z'/><path d='M3 4h18v3H3z'/><path d='M9 11h6'/></svg>
+                  查看历史导出
+                </button>
+              </div>
+            </div>
+          </div>
+          <div id='apkResults' class='apk-results'></div>
+          <section id='apkHistorySection' class='apk-history' hidden>
+            <h3>导出记录</h3>
+            <div id='apkHistoryList' class='apk-history-list'></div>
+          </section>
+        </div>
+        <div class='modal-actions'>
+          <button id='apkCancelBtn' class='btn btn-ghost' type='button'>关闭</button>
         </div>
       </div>
     </div>

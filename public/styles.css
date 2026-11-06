@@ -15,6 +15,10 @@
   --accent-2: #38bdf8;
   --accent-soft: rgba(40, 224, 200, .12);
   --accent-soft-2: rgba(56, 189, 248, .12);
+  --extract: #a78bfa;
+  --extract-2: #22d3ee;
+  --extract-soft: rgba(167, 139, 250, .14);
+  --extract-soft-2: rgba(34, 211, 238, .12);
   --critical: #ff5c7c;
   --high: #ff9f43;
   --medium: #ffd166;
@@ -49,6 +53,10 @@
   --accent-2: #1688cf;
   --accent-soft: rgba(10, 169, 146, .12);
   --accent-soft-2: rgba(22, 136, 207, .10);
+  --extract: #7c3aed;
+  --extract-2: #0891b2;
+  --extract-soft: rgba(124, 58, 237, .12);
+  --extract-soft-2: rgba(8, 145, 178, .10);
   --critical: #dc2f55;
   --high: #d97706;
   --medium: #b7791f;
@@ -185,6 +193,8 @@ button:disabled, input:disabled, select:disabled { opacity: .48; cursor: not-all
 .btn-primary { color: #041b28; border-color: transparent; background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: 0 8px 22px rgba(40, 224, 200, .16); }
 :root[data-theme='light'] .btn-primary { color: #ffffff; }
 .btn-danger { color: #fff2f5; border-color: rgba(255, 92, 124, .38); background: linear-gradient(135deg, rgba(255, 92, 124, .92), rgba(220, 47, 85, .88)); }
+.btn-extract { color: #0b1020; border-color: transparent; background: linear-gradient(135deg, var(--extract), var(--extract-2)); box-shadow: 0 8px 22px var(--extract-soft); }
+:root[data-theme='light'] .btn-extract { color: #ffffff; }
 .btn-sm { min-height: 30px; padding: 5px 9px; font-size: 11.5px; border-radius: 8px; }
 
 .icon-btn {
@@ -407,9 +417,18 @@ button:disabled, input:disabled, select:disabled { opacity: .48; cursor: not-all
 .state-installed { color: var(--low); background: var(--ok-soft); border-color: rgba(57, 217, 138, .24); }
 .state-uninstalled { color: var(--muted); background: var(--panel-3); }
 .state-disabled { color: var(--high); background: var(--warn-soft); border-color: rgba(255, 159, 67, .24); }
-.row-actions { display: flex; flex-wrap: wrap; gap: 5px; }
-.row-actions .btn { min-height: 28px; padding: 4px 8px; font-size: 10.5px; border-radius: 7px; }
-.row-actions .btn svg { display: none; }
+.app-table th:last-child, .app-table td:last-child { min-width: 144px; white-space: nowrap; }
+.row-actions { display: flex; align-items: center; flex-wrap: nowrap; gap: 5px; }
+.icon-action { position: relative; width: 28px; height: 28px; display: inline-grid; place-items: center; flex: 0 0 auto; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); cursor: pointer; transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease, color .14s ease; }
+.icon-action svg { width: 15px; height: 15px; display: block; }
+.icon-action:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 16px var(--shadow-soft); }
+.icon-action.danger { color: var(--critical); border-color: rgba(255, 92, 124, .32); background: var(--danger-soft); }
+.icon-action.primary { color: var(--accent-2); border-color: rgba(56, 189, 248, .28); background: var(--accent-soft-2); }
+.icon-action.extract { color: var(--extract); border-color: rgba(167, 139, 250, .32); background: var(--extract-soft); }
+.icon-action.ghost { color: var(--muted); }
+.icon-action::after { content: attr(data-tooltip); position: absolute; left: 50%; bottom: calc(100% + 7px); z-index: 30; transform: translate(-50%, 2px); padding: 4px 7px; border: 1px solid var(--line-strong); border-radius: 7px; color: var(--text); background: var(--panel-3); box-shadow: 0 8px 20px var(--shadow); font-size: 10px; font-weight: 650; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .14s ease, transform .14s ease; }
+.icon-action:hover::after, .icon-action:focus-visible::after { opacity: 1; transform: translate(-50%, -2px); }
+.icon-action:disabled { opacity: .45; cursor: not-allowed; }
 
 .empty-state { min-height: 460px; display: grid; place-items: center; }
 .empty-card { width: min(620px, 100%); padding: 28px; border: 1px solid var(--line); border-radius: 20px; background: radial-gradient(circle at 10% 0%, var(--accent-soft-2), transparent 42%), linear-gradient(180deg, var(--panel), var(--panel-2)); box-shadow: 0 22px 60px var(--shadow); text-align: center; }
@@ -536,6 +555,52 @@ button:disabled, input:disabled, select:disabled { opacity: .48; cursor: not-all
 .notice strong { font-size: 11.5px; }
 .notice p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .settings-status { min-height: 16px; margin: 10px 0 0; color: var(--accent); font-size: 10.5px; }
+.export-dir-field { grid-column: 1 / -1; }
+.export-dir-field small span { color: var(--accent-2); font-family: 'Cascadia Mono', 'Consolas', monospace; }
+.apk-modal { width: min(820px, 100%); }
+.apk-progress-card { padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: radial-gradient(circle at 100% 0%, var(--extract-soft-2), transparent 48%), var(--panel-2); }
+.apk-dir-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 11px; }
+.apk-dir-info { min-width: 0; display: grid; gap: 4px; }
+.apk-dir-info span { color: var(--muted); font-size: 10.5px; }
+.apk-dir-info code, .apk-dir { display: block; max-width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--accent-2); background: var(--bg-soft); font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: break-all; }
+.apk-toolbar { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.apk-results { display: grid; gap: 10px; margin-top: 12px; }
+.apk-empty { padding: 24px; border: 1px dashed var(--line-strong); border-radius: 12px; color: var(--muted); background: var(--panel-2); text-align: center; font-size: 11.5px; }
+.apk-empty.small { padding: 12px; }
+.apk-result { padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2); }
+.apk-result.is-ok { border-color: rgba(57, 217, 138, .28); }
+.apk-result.is-error { border-color: rgba(255, 92, 124, .30); }
+.apk-result-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.apk-result-title { min-width: 0; display: grid; gap: 3px; }
+.apk-result-title strong { font-size: 12.5px; }
+.apk-result-title code { color: var(--accent-2); font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 10.5px; word-break: break-all; }
+.apk-status { padding: 3px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700; }
+.apk-result.is-ok .apk-status { color: var(--low); background: var(--ok-soft); }
+.apk-result.is-error .apk-status { color: var(--critical); background: var(--danger-soft); }
+.apk-result-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.apk-result-meta span { padding: 3px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--panel-3); font-size: 10px; }
+.apk-dir { margin-top: 8px; white-space: normal; }
+.apk-error { margin-top: 8px; padding: 8px 10px; border: 1px solid rgba(255, 92, 124, .28); border-radius: 9px; color: var(--critical); background: var(--danger-soft); font-size: 10.5px; line-height: 1.5; }
+.apk-file-list { display: grid; gap: 5px; margin-top: 9px; }
+.apk-file { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-3); color: var(--muted); font-size: 10.5px; }
+.apk-file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 650; }
+.apk-file code { color: var(--accent-2); font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 10px; }
+.apk-skip { padding: 2px 6px; border-radius: 999px; color: var(--unknown); background: var(--panel-2); font-size: 9.5px; }
+.apk-split-hint { display: grid; gap: 5px; margin-top: 9px; padding: 9px 10px; border: 1px solid rgba(167, 139, 250, .28); border-radius: 10px; background: linear-gradient(90deg, var(--extract-soft), transparent 75%); }
+.apk-split-hint strong { color: var(--extract); font-size: 11px; }
+.apk-split-hint span { color: var(--muted); font-size: 10px; }
+.apk-install-cmd { display: block; padding: 6px 8px; border-radius: 7px; color: var(--accent); background: var(--bg-soft); font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 10.5px; overflow-x: auto; white-space: nowrap; }
+.apk-history { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.apk-history h3 { margin: 0 0 10px; font-size: 13px; }
+.apk-history-list { display: grid; gap: 8px; }
+.apk-history-item { padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
+.apk-history-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.apk-history-head strong { font-size: 12px; }
+.apk-history-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; color: var(--muted); font-size: 10px; }
+.apk-history-meta span { padding: 2px 6px; border-radius: 999px; background: var(--panel-3); }
+.apk-history-files { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.apk-history-files span { padding: 2px 6px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted-2); font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 9.5px; }
+.apk-open-path { margin-top: 8px; }
 
 .toast-container { position: fixed; top: 86px; right: 18px; z-index: 140; width: min(360px, calc(100vw - 36px)); display: grid; gap: 8px; pointer-events: none; }
 .toast { pointer-events: auto; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 11px 12px; border: 1px solid var(--line-strong); border-radius: 12px; background: linear-gradient(180deg, var(--panel), var(--panel-2)); box-shadow: 0 16px 44px var(--shadow); animation: toastIn .2s ease both; }
@@ -621,6 +686,12 @@ button:disabled, input:disabled, select:disabled { opacity: .48; cursor: not-all
   .log-head { padding: 0 10px; }
   .log-body { padding: 10px; }
   .settings-grid { grid-template-columns: 1fr; }
+  .export-dir-field { grid-column: auto; }
+  .apk-modal { max-height: 92vh; }
+  .apk-dir-row { align-items: flex-start; flex-direction: column; }
+  .apk-toolbar { justify-content: flex-start; }
+  .apk-file { grid-template-columns: minmax(0, 1fr) auto; }
+  .apk-file code { grid-column: 1 / -1; }
   .modal { border-radius: 16px; }
   .modal-body, .modal-head, .modal-actions { padding-left: 14px; padding-right: 14px; }
 }

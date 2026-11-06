@@ -12,7 +12,11 @@
     restore: '/api/restore',
     config: '/api/config',
     catalog: '/api/catalog',
-    selectDevice: '/api/device/select'
+    selectDevice: '/api/device/select',
+    apkPaths: '/api/apk/paths?pkg=',
+    apkPull: '/api/apk/pull',
+    apkExports: '/api/apk/exports',
+    apkOpen: '/api/apk/open'
   };
 
   const PAGE_SIZE = 50;
@@ -23,6 +27,7 @@
   const PENDING_AUTH = String.fromCharCode(117, 110, 97, 117, 116, 104, 111, 114, 105, 122, 101, 100);
   const STORAGE_THEME = 'adbAppManager.theme';
   const STORAGE_SERIAL = 'adbAppManager.lastSerial';
+  const STORAGE_EXPORT_DIR = 'adbAppManager.exportDir';
 
   const FALLBACK_VENDOR_LABELS = {
     xiaomi: '小米 / Redmi',
@@ -233,6 +238,10 @@
     return { active: false, action: '', actionLabel: '', total: 0, done: 0, results: [] };
   }
 
+  function freshApk() {
+    return { active: false, total: 0, done: 0, results: [], root: '', currentIndex: 0, currentPkg: '', currentLabel: '', history: [], historyVisible: false };
+  }
+
   const state = {
     health: null,
     config: { timeoutMs: 15000 },
@@ -258,7 +267,9 @@
     batch: freshBatch(),
     pendingUninstall: null,
     modal: null,
-    theme: 'dark'
+    theme: 'dark',
+    exportDir: '',
+    apk: freshApk()
   };
 
   const dom = {};
@@ -294,6 +305,33 @@
 
   function numberOr(value, fallback) {
     return Number.isFinite(Number(value)) ? Number(value) : fallback;
+  }
+
+  function formatBytes(value) {
+    const sizeValue = numberOr(value, 0);
+    if (sizeValue <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const index = Math.min(units.length - 1, Math.floor(Math.log(sizeValue) / Math.log(1024)));
+    const scaled = sizeValue / Math.pow(1024, index);
+    const text = index === 0 ? String(Math.round(scaled)) : scaled.toFixed(scaled >= 10 ? 1 : 2);
+    return text + ' ' + units[index];
+  }
+
+  function shortHash(value) {
+    return String(value || '').slice(0, 12) || '—';
+  }
+
+  function readExportDir() {
+    try { return localStorage.getItem(STORAGE_EXPORT_DIR) || ''; } catch (err) { return ''; }
+  }
+
+  function actionIcon(type) {
+    const icons = {};
+    icons.uninstall = `<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6'/><path d='M10 11v5M14 11v5'/></svg>`;
+    icons.restore = `<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M3 12a9 9 0 1 0 3-6.7L3 8'/><path d='M3 3v5h5'/></svg>`;
+    icons.pull = `<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 3v12M7 10l5 5 5-5'/><path d='M5 21h14'/><path d='M4 7V4h16v3'/></svg>`;
+    icons.copy = `<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><rect x='9' y='9' width='11' height='11' rx='2'/><path d='M5 15V5a2 2 0 0 1 2-2h8'/></svg>`;
+    return icons[type] || icons.copy;
   }
 
   function vendorLabel(key) {
@@ -516,6 +554,7 @@
     dom.adbBadge.title = adbPath || (demo ? '演示模式' : '未找到 adb');
     dom.adbBadge.innerHTML = `<span class='status-dot'></span><div class='status-copy'><strong>${escapeHtml(title)}</strong><span>${escapeHtml(subtitle)}</span></div>`;
     dom.demoBadge.hidden = !demo;
+    if (dom.defaultExportsDir) dom.defaultExportsDir.textContent = health.exportsDir || 'exports/<serial>';
   }
 
   function renderDeviceSelect() {
@@ -692,7 +731,7 @@
     const selected = state.selected.has(pkg);
     const critical = app.risk === 'critical' || state.critical.has(pkg);
     const disabled = state.busy ? 'disabled' : '';
-    return `<tr class='${selected ? 'is-selected' : ''} ${critical ? 'is-critical' : ''}'><td class='check-cell'><input type='checkbox' data-select='${escapeHtml(pkg)}' ${selected ? 'checked' : ''} ${disabled}></td><td><div class='app-name'>${escapeHtml(label)}</div><div class='app-note'>${escapeHtml(note)}</div></td><td><code class='pkg-code' title='${escapeHtml(pkg)}'>${escapeHtml(pkg)}</code></td><td><span class='partition-badge'>${escapeHtml(partitionLabel(app.partition))}</span></td><td><span class='vendor-badge'>${escapeHtml(vendorLabel(app.vendor))}</span></td><td>${riskBadge(app.risk)}</td><td>${stateBadge(app.state)}</td><td><div class='row-actions'><button type='button' class='btn btn-danger btn-sm mutation' data-row-action='uninstall' data-pkg='${escapeHtml(pkg)}' ${disabled}>卸载</button><button type='button' class='btn btn-primary btn-sm mutation' data-row-action='restore' data-pkg='${escapeHtml(pkg)}' ${disabled}>恢复</button><button type='button' class='btn btn-ghost btn-sm mutation' data-row-action='copy' data-pkg='${escapeHtml(pkg)}' ${disabled}>复制包名</button></div></td></tr>`;
+    return `<tr class='${selected ? 'is-selected' : ''} ${critical ? 'is-critical' : ''}'><td class='check-cell'><input type='checkbox' data-select='${escapeHtml(pkg)}' ${selected ? 'checked' : ''} ${disabled}></td><td><div class='app-name'>${escapeHtml(label)}</div><div class='app-note'>${escapeHtml(note)}</div></td><td><code class='pkg-code' title='${escapeHtml(pkg)}'>${escapeHtml(pkg)}</code></td><td><span class='partition-badge'>${escapeHtml(partitionLabel(app.partition))}</span></td><td><span class='vendor-badge'>${escapeHtml(vendorLabel(app.vendor))}</span></td><td>${riskBadge(app.risk)}</td><td>${stateBadge(app.state)}</td><td><div class='row-actions'><button type='button' class='icon-action danger mutation' data-row-action='uninstall' data-pkg='${escapeHtml(pkg)}' title='卸载' data-tooltip='卸载' aria-label='卸载' ${disabled}>${actionIcon('uninstall')}</button><button type='button' class='icon-action primary mutation' data-row-action='restore' data-pkg='${escapeHtml(pkg)}' title='恢复' data-tooltip='恢复' aria-label='恢复' ${disabled}>${actionIcon('restore')}</button><button type='button' class='icon-action extract mutation' data-row-action='pull' data-pkg='${escapeHtml(pkg)}' title='提取 APK' data-tooltip='提取 APK' aria-label='提取 APK' ${disabled}>${actionIcon('pull')}</button><button type='button' class='icon-action ghost mutation' data-row-action='copy' data-pkg='${escapeHtml(pkg)}' title='复制包名' data-tooltip='复制包名' aria-label='复制包名' ${disabled}>${actionIcon('copy')}</button></div></td></tr>`;
   }
 
   function updateSortIndicators() {
@@ -754,6 +793,7 @@
     dom.selectedCount.textContent = '已选 ' + state.selected.size + ' 项';
     dom.batchUninstallBtn.disabled = state.busy || state.selected.size === 0;
     dom.batchRestoreBtn.disabled = state.busy || state.selected.size === 0;
+    dom.batchApkPullBtn.disabled = state.busy || state.selected.size === 0;
     dom.exportPresetBtn.disabled = state.busy || state.selected.size === 0;
     dom.clearSelectionBtn.disabled = state.busy || (!state.selected.size && !state.batch.results.length);
     renderBatchProgress();
@@ -778,7 +818,7 @@
   function addLog(action, result) {
     const entry = {
       at: new Date().toISOString(),
-      action: action === 'restore' ? '恢复' : '卸载',
+      action: action === 'restore' ? '恢复' : (action === 'extract' ? '提取 APK' : '卸载'),
       pkg: result.pkg || '',
       ok: !!result.ok,
       skipped: !!result.skipped,
@@ -795,7 +835,7 @@
     dom.copyLogBtn.disabled = state.logs.length === 0;
     dom.clearLogBtn.disabled = state.logs.length === 0;
     if (!state.logs.length) {
-      dom.logBody.innerHTML = `<div class='log-empty'>暂无执行记录。批量卸载或恢复后，这里会展示实际 adb 命令与输出。</div>`;
+      dom.logBody.innerHTML = `<div class='log-empty'>暂无执行记录。批量卸载、恢复或提取 APK 后，这里会展示实际 adb 命令与输出。</div>`;
       return;
     }
     dom.logBody.innerHTML = state.logs.map((entry) => {
@@ -948,6 +988,7 @@
 
   function openDangerModal(pkgs) {
     if (state.busy) return;
+    closeModals();
     const apps = pkgs.map(findApp);
     const dangerApps = apps.filter(isDangerApp);
     const dangerPkgSet = new Set(dangerApps.map((app) => app.pkg));
@@ -998,6 +1039,227 @@
 
   function copyPackage(pkg) {
     copyText(pkg).then(() => showToast('success', '包名已复制', pkg));
+  }
+
+  function openExportsFolder(path) {
+    if (state.busy) {
+      showToast('info', '稍候', '已有任务进行中');
+      return Promise.resolve(null);
+    }
+    return withBusy('正在打开导出文件夹', async () => {
+      const data = await apiFetch(API.apkOpen, { method: 'POST', body: JSON.stringify({ path: path || null }) }, { loadingText: '正在打开导出文件夹' });
+      showToast('success', '已请求系统文件管理器', data.root || data.path || path || '导出目录');
+      return data;
+    });
+  }
+
+  function openApkHistory() {
+    if (state.busy) return;
+    openApkModal({ history: true });
+    loadApkExports();
+  }
+
+  function openApkModal(options) {
+    const opts = options || {};
+    closeModals();
+    if (opts.reset) {
+      const history = state.apk.history;
+      const root = state.apk.root || (state.health && state.health.exportsDir) || '';
+      state.apk = freshApk();
+      state.apk.history = history;
+      state.apk.root = root;
+      state.apk.historyVisible = !!opts.history;
+    }
+    if (opts.history) state.apk.historyVisible = true;
+    dom.apkModal.hidden = false;
+    state.modal = 'apk';
+    renderApkModal();
+  }
+
+  function renderApkModal() {
+    const apk = state.apk;
+    const pct = apk.total ? Math.round((apk.done / apk.total) * 100) : 0;
+    if (apk.active) {
+      const index = Math.min(apk.done + 1, apk.total);
+      dom.apkProgressText.textContent = '正在提取第 ' + index + '/' + apk.total + ' 个' + (apk.currentLabel ? ' · ' + apk.currentLabel : '');
+    } else if (apk.total) {
+      const success = apk.results.filter((item) => item.ok).length;
+      const failed = apk.results.length - success;
+      dom.apkProgressText.textContent = '提取完成 · 成功 ' + success + ' 项，失败 ' + failed + ' 项';
+    } else {
+      dom.apkProgressText.textContent = '准备提取 APK';
+    }
+    dom.apkProgressCount.textContent = apk.done + ' / ' + apk.total;
+    dom.apkProgressBar.style.width = pct + '%';
+    dom.apkRootText.textContent = apk.root || (state.health && state.health.exportsDir) || '等待提取结果…';
+    dom.apkResults.innerHTML = apk.results.length ? apk.results.map(renderApkResult).join('') : `<div class='apk-empty'>尚未执行提取。选择应用后点击「提取 APK」开始。</div>`;
+    dom.apkHistorySection.hidden = !apk.historyVisible;
+    renderApkHistory();
+  }
+
+  function renderApkResult(result) {
+    const files = Array.isArray(result.files) ? result.files : [];
+    const count = numberOr(result.count, files.length || numberOr(result.pathCount, 0));
+    const split = !!result.split || count > 1 || files.some((file) => file.split);
+    const dir = result.dir || state.apk.root || (state.health && state.health.exportsDir) || '';
+    const status = result.ok ? '成功' : '失败';
+    const cls = result.ok ? 'is-ok' : 'is-error';
+    const filesHtml = files.length ? files.map((file) => `<div class='apk-file'><span class='apk-file-name' title='${escapeHtml(file.name || '')}'>${escapeHtml(file.name || '未命名文件')}</span><span>${formatBytes(file.size)}</span><code title='${escapeHtml(file.sha256 || '')}'>SHA-256 ${shortHash(file.sha256)}</code>${file.skipped ? `<span class='apk-skip'>已跳过</span>` : ''}</div>`).join('') : `<div class='apk-empty small'>本次未返回文件明细。</div>`;
+    const splitHint = split ? (result.ok ? `<div class='apk-split-hint'><strong>该应用由 ${count} 个分片组成，已全部提取</strong><span>安装回手机提示命令</span><code class='apk-install-cmd'>adb install-multiple &lt;该目录下所有 .apk&gt;</code></div>` : `<div class='apk-split-hint'><strong>该应用由 ${count} 个分片组成，请查看失败原因。</strong></div>`) : '';
+    const errorHtml = result.error ? `<div class='apk-error'>${escapeHtml(result.error)}</div>` : '';
+    return `<article class='apk-result ${cls}'><div class='apk-result-head'><div class='apk-result-title'><strong>${escapeHtml(result.label || result.pkg)}</strong><code>${escapeHtml(result.pkg)}</code></div><span class='apk-status'>${status}</span></div><div class='apk-result-meta'><span>${count} 个分片</span><span>${formatBytes(result.totalBytes)}</span><span>${files.length} 个文件</span></div><code class='apk-dir' title='${escapeHtml(dir)}'>${escapeHtml(dir || '等待返回目录')}</code>${errorHtml}<div class='apk-file-list'>${filesHtml}</div>${splitHint}</article>`;
+  }
+
+  function renderApkHistory() {
+    if (!state.apk.history.length) {
+      dom.apkHistoryList.innerHTML = `<div class='apk-empty small'>暂无导出记录。</div>`;
+      return;
+    }
+    dom.apkHistoryList.innerHTML = state.apk.history.map((item) => {
+      const files = Array.isArray(item.files) ? item.files : [];
+      const dir = item.dir || state.apk.root || (state.health && state.health.exportsDir) || '';
+      const fileHtml = files.length ? `<div class='apk-history-files'>${files.map((file) => `<span title='${escapeHtml(file.sha256 || '')}'>${escapeHtml(file.name || '未命名文件')} · ${shortHash(file.sha256)}</span>`).join('')}</div>` : '';
+      return `<div class='apk-history-item'><div class='apk-history-head'><strong>${escapeHtml(item.label || item.pkg)}</strong><button type='button' class='btn btn-ghost btn-sm mutation apk-open-path' data-apk-open-path='${escapeHtml(dir)}'>打开此目录</button></div><div class='apk-history-meta'><span>${escapeHtml(item.pkg)}</span><span>${escapeHtml(item.serial || '本机设备')}</span><span>${numberOr(item.count, files.length)} 个分片</span><span>${formatBytes(item.totalBytes)}</span><span>${escapeHtml(formatTime(item.at))}</span></div><code class='apk-dir' title='${escapeHtml(dir)}'>${escapeHtml(dir || '等待返回目录')}</code>${fileHtml}</div>`;
+    }).join('');
+  }
+
+  function loadApkExports() {
+    if (state.busy) {
+      showToast('info', '稍候', '已有任务进行中');
+      return Promise.resolve(null);
+    }
+    return withBusy('正在读取导出记录', async () => {
+      const data = await apiFetch(API.apkExports, {}, { loadingText: '正在读取导出记录' });
+      state.apk.history = Array.isArray(data.items) ? data.items : [];
+      state.apk.root = data.root || state.apk.root;
+      state.apk.historyVisible = true;
+      renderApkModal();
+      showToast('success', '导出记录已更新', '共 ' + state.apk.history.length + ' 条');
+      return data;
+    });
+  }
+
+  function normalizeApkResult(pkg, item, pathInfo, outputDir) {
+    const source = item && typeof item === 'object' ? item : {};
+    const files = Array.isArray(source.files) ? source.files : [];
+    const pathCount = numberOr(pathInfo && pathInfo.count, 0);
+    const count = numberOr(source.count, files.length || pathCount);
+    return {
+      pkg: source.pkg || pkg,
+      label: source.label || findApp(pkg).label || pkg,
+      ok: !!source.ok,
+      dir: source.dir || outputDir || '',
+      count,
+      totalBytes: numberOr(source.totalBytes, files.reduce((sum, file) => sum + numberOr(file.size, 0), 0)),
+      files,
+      split: !!(pathInfo && pathInfo.split) || count > 1 || files.some((file) => file.split),
+      pathCount,
+      paths: pathInfo && Array.isArray(pathInfo.paths) ? pathInfo.paths : [],
+      error: source.error || ''
+    };
+  }
+
+  function addApkLog(result) {
+    const files = Array.isArray(result.files) ? result.files : [];
+    if (!files.length) {
+      addLog('extract', { pkg: result.pkg, ok: !!result.ok, skipped: false, command: '', output: result.error || '未返回文件明细' });
+      return;
+    }
+    files.forEach((file) => {
+      addLog('extract', {
+        pkg: result.pkg,
+        ok: !file.skipped && !!result.ok,
+        skipped: !!file.skipped,
+        command: file.command || '',
+        output: [file.name, formatBytes(file.size), file.sha256].filter(Boolean).join(' · ')
+      });
+    });
+  }
+
+  async function pullOneApk(pkg, index, total) {
+    const label = findApp(pkg).label || pkg;
+    let pathInfo = null;
+    try {
+      pathInfo = await apiFetch(API.apkPaths + encodeURIComponent(pkg), {}, { silent: true, loadingText: '正在读取第 ' + index + '/' + total + ' 个 APK 路径 · ' + label });
+    } catch (err) {
+      showToast('warn', '路径读取未完成', (err && err.message) || '请稍后重试');
+    }
+    const data = await apiFetch(API.apkPull, {
+      method: 'POST',
+      body: JSON.stringify({ packages: [pkg], outputDir: state.exportDir || null, skipExisting: true })
+    }, { loadingText: '正在提取第 ' + index + '/' + total + ' 个 · ' + label });
+    const item = data && Array.isArray(data.results) ? data.results[0] : null;
+    if (!item) {
+      return { data, result: { pkg, label, ok: false, dir: data && data.outputDir ? data.outputDir : '', count: 0, totalBytes: 0, files: [], split: false, pathCount: pathInfo ? numberOr(pathInfo.count, 0) : 0, paths: [], error: '服务未返回逐包提取结果' } };
+    }
+    return { data, result: normalizeApkResult(pkg, item, pathInfo, data && data.outputDir) };
+  }
+
+  function startApkPull(packages) {
+    if (state.busy) {
+      showToast('info', '稍候', '已有任务进行中');
+      return Promise.resolve(null);
+    }
+    const pkgs = Array.from(new Set(packages || []));
+    if (!pkgs.length) {
+      showToast('info', '请先选择应用', '已选列表为空');
+      return Promise.resolve(null);
+    }
+    openApkModal({ reset: true });
+    return withBusy('正在提取 APK', async () => {
+      state.apk.active = true;
+      state.apk.total = pkgs.length;
+      state.apk.done = 0;
+      state.apk.results = [];
+      state.apk.root = state.exportDir || (state.health && state.health.exportsDir) || '';
+      state.apk.currentIndex = 1;
+      state.apk.currentPkg = pkgs[0];
+      state.apk.currentLabel = findApp(pkgs[0]).label || pkgs[0];
+      renderApkModal();
+      for (let i = 0; i < pkgs.length; i += 1) {
+        const pkg = pkgs[i];
+        const label = findApp(pkg).label || pkg;
+        state.apk.currentIndex = i + 1;
+        state.apk.currentPkg = pkg;
+        state.apk.currentLabel = label;
+        renderApkModal();
+        let result;
+        try {
+          const pulled = await pullOneApk(pkg, i + 1, pkgs.length);
+          if (pulled.data && pulled.data.outputDir) state.apk.root = pulled.data.outputDir;
+          result = pulled.result;
+        } catch (err) {
+          result = { pkg, label, ok: false, dir: '', count: 0, totalBytes: 0, files: [], split: false, pathCount: 0, paths: [], error: (err && err.message) || '本机服务请求中断' };
+        }
+        state.apk.results.push(result);
+        state.apk.done = i + 1;
+        renderApkModal();
+        addApkLog(result);
+      }
+      state.apk.active = false;
+      state.apk.currentIndex = pkgs.length;
+      renderApkModal();
+      const success = state.apk.results.filter((item) => item.ok).length;
+      const failed = state.apk.results.length - success;
+      showToast('success', 'APK 提取完成', '成功 ' + success + ' 项，失败 ' + failed + ' 项');
+      return true;
+    });
+  }
+
+  function onBatchApkPull() {
+    if (state.busy) return;
+    const packages = Array.from(state.selected);
+    if (!packages.length) {
+      showToast('info', '请先选择应用', '已选列表为空');
+      return;
+    }
+    startApkPull(packages);
+  }
+
+  function onApkHistoryClick(event) {
+    const button = event.target.closest('[data-apk-open-path]');
+    if (!button) return;
+    openExportsFolder(button.dataset.apkOpenPath || null);
   }
 
   function exportPreset() {
@@ -1240,12 +1502,17 @@
     const timeout = readTimeout();
     if (timeout == null) return;
     const adbPath = dom.adbPathInput.value.trim();
+    const exportDir = dom.exportDirInput.value.trim();
+    const localChanged = exportDir !== state.exportDir;
+    state.exportDir = exportDir;
+    try { localStorage.setItem(STORAGE_EXPORT_DIR, exportDir); } catch (err) {}
     const currentTimeout = numberOr((state.config && state.config.timeoutMs) || (state.health && state.health.config && state.health.config.timeoutMs), 15000);
     const patches = [];
     if (adbPath) patches.push({ adbPath });
     if (timeout !== currentTimeout) patches.push({ timeoutMs: timeout });
     if (!patches.length) {
-      showToast('info', '设置无变化', 'ADB 路径与超时保持当前值');
+      closeModals();
+      showToast(localChanged ? 'success' : 'info', localChanged ? '设置已保存' : '设置无变化', localChanged ? '导出目录已记录在本页，提取时将作为 outputDir 使用' : 'ADB 路径与超时保持当前值');
       return;
     }
     const result = await withBusy('正在保存设置', async () => {
@@ -1256,14 +1523,17 @@
     if (result) {
       closeModals();
       await refreshAll({ force: false });
-      showToast('success', '设置已保存', 'ADB 路径与超时已写入本机配置');
+      showToast('success', '设置已保存', localChanged ? 'ADB 路径、超时与导出目录已生效' : 'ADB 路径与超时已写入本机配置');
     }
   }
 
   function openSettings() {
     if (state.busy) return;
+    closeModals();
     dom.adbPathInput.value = (state.config && state.config.adbPath) || (state.health && state.health.adbPath) || '';
     dom.timeoutInput.value = String((state.config && state.config.timeoutMs) || (state.health && state.health.config && state.health.config.timeoutMs) || 15000);
+    dom.exportDirInput.value = state.exportDir || '';
+    if (dom.defaultExportsDir) dom.defaultExportsDir.textContent = (state.health && state.health.exportsDir) || 'exports/<serial>';
     dom.settingsStatus.textContent = '';
     renderThemeButtons();
     dom.settingsModal.hidden = false;
@@ -1274,6 +1544,7 @@
   function closeModals() {
     dom.dangerModal.hidden = true;
     dom.settingsModal.hidden = true;
+    dom.apkModal.hidden = true;
     dom.riskAck.checked = false;
     dom.dangerConfirmInput.value = '';
     dom.dangerStartBtn.disabled = true;
@@ -1387,6 +1658,7 @@
     const action = button.dataset.rowAction;
     if (action === 'uninstall') openDangerModal([pkg]);
     else if (action === 'restore') runBatch('restore', [pkg], []);
+    else if (action === 'pull') startApkPull([pkg]);
     else if (action === 'copy') copyPackage(pkg);
   }
 
@@ -1460,7 +1732,10 @@
       'clearLogBtn', 'logBody', 'dangerModal', 'dangerCloseBtn', 'dangerList', 'riskAck',
       'dangerConfirmInput', 'dangerHint', 'dangerCancelBtn', 'dangerStartBtn', 'settingsModal',
       'settingsCloseBtn', 'adbPathInput', 'autoDetectBtn', 'timeoutInput', 'themeDarkBtn',
-      'themeLightBtn', 'settingsStatus', 'settingsCancelBtn', 'saveSettingsBtn', 'toastContainer'
+      'themeLightBtn', 'settingsStatus', 'settingsCancelBtn', 'saveSettingsBtn', 'toastContainer',
+      'apkExportsBtn', 'batchApkPullBtn', 'exportDirInput', 'defaultExportsDir', 'settingsOpenExportsBtn',
+      'apkModal', 'apkCloseBtn', 'apkProgressText', 'apkProgressCount', 'apkProgressBar', 'apkRootText',
+      'apkOpenFolderBtn', 'apkHistoryBtn', 'apkResults', 'apkHistorySection', 'apkHistoryList', 'apkCancelBtn'
     ];
     ids.forEach((id) => { dom[id] = $(id); });
     dom.tableHead = dom.appsTableHead;
@@ -1469,6 +1744,7 @@
 
   function bindEvents() {
     dom.refreshBtn.addEventListener('click', () => refreshAll({ force: true }));
+    dom.apkExportsBtn.addEventListener('click', openApkHistory);
     dom.themeBtn.addEventListener('click', toggleTheme);
     dom.settingsBtn.addEventListener('click', openSettings);
     dom.sidebarToggle.addEventListener('click', toggleSidebar);
@@ -1490,6 +1766,7 @@
     dom.tableHead.addEventListener('click', onHeaderSortClick);
     dom.batchUninstallBtn.addEventListener('click', onBatchUninstall);
     dom.batchRestoreBtn.addEventListener('click', onBatchRestore);
+    dom.batchApkPullBtn.addEventListener('click', onBatchApkPull);
     dom.exportPresetBtn.addEventListener('click', exportPreset);
     dom.clearSelectionBtn.addEventListener('click', clearSelection);
     dom.logToggle.addEventListener('click', toggleLogDrawer);
@@ -1507,7 +1784,14 @@
     dom.settingsCancelBtn.addEventListener('click', closeModals);
     dom.settingsModal.addEventListener('click', (event) => closeOnBackdrop(event, dom.settingsModal));
     dom.autoDetectBtn.addEventListener('click', autoDetectAdb);
+    dom.settingsOpenExportsBtn.addEventListener('click', () => openExportsFolder(state.exportDir || null));
     dom.saveSettingsBtn.addEventListener('click', saveSettings);
+    dom.apkCloseBtn.addEventListener('click', closeModals);
+    dom.apkCancelBtn.addEventListener('click', closeModals);
+    dom.apkModal.addEventListener('click', (event) => closeOnBackdrop(event, dom.apkModal));
+    dom.apkOpenFolderBtn.addEventListener('click', () => openExportsFolder(state.apk.root || null));
+    dom.apkHistoryBtn.addEventListener('click', loadApkExports);
+    dom.apkHistoryList.addEventListener('click', onApkHistoryClick);
     dom.themeDarkBtn.addEventListener('click', () => applyTheme('dark'));
     dom.themeLightBtn.addEventListener('click', () => applyTheme('light'));
     dom.toastContainer.addEventListener('click', onToastClose);
@@ -1517,6 +1801,7 @@
 
   function init() {
     cacheDom();
+    state.exportDir = readExportDir();
     applyTheme(readTheme());
     bindEvents();
     renderStaticFilters();

@@ -14,6 +14,9 @@
 - **筛选 / 搜索 / 排序 / 分页**：按名称与包名即时搜索，来源、风险、厂商多选筛选，每页 50 条。
 - **六套预设方案**：小米、华为、OPPO、vivo、三星、Google，一键勾选方案中仍已安装的 low/medium 项。
 - **批量卸载与恢复**：逐包调用接口，实时进度条、逐条结果与可复制的实际 adb 命令日志。
+- **APK 提取到本地**：单包、勾选批量、按预设或筛选结果整批提取，`pm path` + `adb pull` 落到 `exports/<serial>/<包名>/`，可一键在系统文件管理器中打开。
+- **split APK 全量提取**：`pm path` 返回几行就拉几个（实测 Bard 6 行、Chrome 5 行），`base.apk` 与全部 `split_config.*.apk` 一起保存，装回时用 `adb install-multiple` 一次装入。
+- **导出记录与校验**：每个文件记录大小与 SHA-256，`GET /api/apk/exports` 可查看清单；已存在且非空的文件默认跳过，重复执行不重复传输。
 - **危险确认**：critical/high 项需勾选「我已了解风险」并输入 `确认卸载`；critical 默认不勾选并带「禁止」标记，`force:false` 时后端硬阻断。
 - **操作历史**：`data/history.json` 按时间倒序保留最多 500 条卸载/恢复记录，支持一键清空。
 - **演示模式**：内置一台假设备与约 40 条示例应用，卸载与恢复在内存中模拟，方便无设备时验证 UI 与流程。
@@ -33,6 +36,127 @@ adb -s <SERIAL> shell pm uninstall -k --user 0 <包名>
 - 恢复走系统自带的 `cmd package install-existing <包名>`（失败时回退 `pm install-existing`，再回退历史记录里的 `pm install -r --user 0 <apkPath>`），把该用户下的标记撤销即可。
 
 因此这套操作是可逆的：重启、OTA 升级通常不会让已卸载项自动回来；恢复出厂设置则会把 user 0 的卸载标记清掉，所有预装应用重新出现。
+
+提取 APK 走的是另一条只读通道：不改动设备上的安装状态，只把分区里的文件复制到电脑，详见下一章。
+
+## 提取手机中的 APK
+
+卸载与提取互不干扰：卸载只改 user 0 的安装状态，提取则通过 `pm path` + `adb pull` 把设备上的 APK 文件原样复制到本机。由于 system / system_ext / product 分区里的 APK 从未被删除，**已为 user 0 卸载的预装应用照样能提取**——在 Android 14 HyperOS（23127PN0CC）上实测 `pm path com.miui.yellowpage` 仍返回 `/product/priv-app/MIUIYellowPage/MIUIYellowPage.apk`。这一步不需要 root。
+
+### 原理与命令
+
+先用 `pm path` 拿到设备上的完整路径，输出每行带一个 `package:` 前缀：
+
+```powershell
+& 'D:\tools\platform-tools\adb.exe' -s SERIAL shell pm path com.android.settings
+# package:/system_ext/priv-app/Settings/Settings.apk
+
+& 'D:\tools\platform-tools\adb.exe' -s SERIAL shell pm path com.google.android.apps.bard
+# package:/data/app/.../base.apk
+# package:/data/app/.../split_config.arm64_v8a.apk
+# ... 共 6 行
+```
+
+再逐行 `adb pull` 到本机，工具默认落到 `exports/<serial>/<包名>/`：
+
+```powershell
+& 'D:\tools\platform-tools\adb.exe' -s SERIAL pull /system_ext/priv-app/Settings/Settings.apk 'exports\23127PN0CC\com.android.settings\Settings.apk'
+```
+
+对应的接口：
+
+| 接口 | 作用 |
+| --- | --- |
+| `GET /api/apk/paths?pkg=<包名>` | 解析 `pm path`，返回全部 APK 设备路径（split 全量） |
+| `POST /api/apk/pull` | 单包或包列表批量 pull，写入 `exports/<serial>/<包名>/`，记录每个文件的大小与 SHA-256；`skipExisting` 默认开启 |
+| `GET /api/apk/exports` | 列出本机导出记录：设备、包名、文件名、大小、SHA-256、提取时间 |
+| `POST /api/apk/open` | 在系统文件管理器中打开导出目录 |
+| `GET /api/health` | 新增 `exportsDir` 字段，显示当前导出根目录 |
+
+### split APK：几行就拉几个
+
+现代应用多用 App Bundle 发布，`pm path` 返回多行时每一行都是必须一起安装的分片。只取 `base.apk` 装回会缺资源或直接安装失败，所以工具把全部行都 pull，不做筛选。
+
+| 输出 | 含义 | 工具处理 |
+| --- | --- | --- |
+| `package:/.../base.apk` | 主包，含代码与 Manifest | 必须提取，装回时作为 `install-multiple` 参数之一 |
+| `package:/.../split_config.arm64_v8a.apk` | ABI 架构相关的 so / 资源 | 一并提取 |
+| `package:/.../split_config.en.apk`、`split_config.es.apk`、`split_config.zh.apk` | 语言资源 | 一并提取 |
+| `package:/.../split_config.xxhdpi.apk` | 屏幕密度资源 | 一并提取 |
+| 只有一行 | 传统单 APK，常见于系统预装 | pull 这一个即可 |
+
+真机实测（23127PN0CC / Android 14 / HyperOS）：
+
+| 包名 | `pm path` 行数 | 文件 |
+| --- | --- | --- |
+| `com.google.android.apps.bard` | 6 | `base.apk` + `split_config.arm64_v8a` / `en` / `es` / `xxhdpi` / `zh` |
+| `com.android.chrome` | 5 | `base.apk` + 4 个 `split_config.*` |
+| `com.miui.yellowpage`（已为 user 0 卸载） | 1 | `/product/priv-app/MIUIYellowPage/MIUIYellowPage.apk` |
+
+### 导出目录
+
+```text
+exports/                                  # 运行时生成，已被 .gitignore 忽略
+└── 42c10f84/                            # 设备 serial
+    ├── com.android.chrome/
+    │   ├── base.apk
+    │   ├── split_config.arm64_v8a.apk
+    │   ├── split_config.en.apk
+    │   ├── split_config.xxhdpi.apk
+    │   └── split_config.zh.apk
+    └── com.miui.yellowpage/
+        └── MIUIYellowPage.apk
+```
+
+每个文件在 `GET /api/apk/exports` 的记录里带 `size`（字节）与 `sha256`，可复制校验值核对文件完整性；导出总大小随提取数量增长，定期清理即可。
+
+### 界面操作步骤
+
+1. **单包提取**：在应用表格行的操作列点「提取 APK」→ 后端先 `GET /api/apk/paths?pkg=` 取全部路径 → `POST /api/apk/pull` 逐个 `adb pull`；日志抽屉显示每个文件的实际命令、字节数与 SHA-256。
+2. **勾选批量**：勾选多包 → 批量栏「批量提取」；也可先点预设方案，或按来源 / 风险 / 厂商筛出结果后整批勾选再提取，逐包顺序执行并显示进度条。
+3. **打开文件夹**：导出面板点「打开导出目录」→ `POST /api/apk/open`，在系统文件管理器里定位到 `exports/<serial>/<包名>/`。
+4. **查看导出记录**：打开导出面板（数据来自 `GET /api/apk/exports`），按设备与包名分组查看文件名、大小、SHA-256，可复制路径或校验值；重复提取同一包时已存在且非空的文件默认跳过。
+5. **确认结果**：`GET /api/health` 的 `exportsDir` 显示当前导出根目录，方便在终端里直接跳转。
+
+### 装回手机
+
+把某个包的全部 APK 一次交给 `adb install-multiple`，顺序无关，缺分片会安装失败：
+
+```powershell
+# PATH 中已配置 adb 时
+adb install-multiple (Get-ChildItem 'exports\42c10f84\com.android.chrome\*.apk').FullName
+
+# 用完整路径并指定设备
+& 'D:\tools\platform-tools\adb.exe' -s SERIAL install-multiple (Get-ChildItem 'exports\42c10f84\com.android.chrome\*.apk').FullName
+
+# 单 APK 的预装应用同样走 install-multiple
+& 'D:\tools\platform-tools\adb.exe' -s SERIAL install-multiple (Get-ChildItem 'exports\42c10f84\com.miui.yellowpage\*.apk').FullName
+```
+
+### 手工单包提取
+
+不经过界面时，用一段 PowerShell 把某个包的全部 APK 拉到本机并算校验值：
+
+```powershell
+$serial = '23127PN0CC'
+$pkg    = 'com.miui.yellowpage'
+$adb    = 'D:\tools\platform-tools\adb.exe'
+$dest   = "exports\$serial\$pkg"
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+& $adb -s $serial shell pm path $pkg | ForEach-Object {
+  $devicePath = ($_ -replace '^package:', '').Trim()
+  if ($devicePath) { & $adb -s $serial pull $devicePath (Join-Path $dest (Split-Path $devicePath -Leaf)) }
+}
+Get-ChildItem $dest | Select-Object Name, Length
+Get-FileHash (Join-Path $dest 'MIUIYellowPage.apk') -Algorithm SHA256
+```
+
+### 大文件、超时与跳过策略
+
+- Chrome、Google 服务这类包单文件可达数百 MB，USB 2.0 下拉取需要几十秒；批量任务按文件顺序执行，界面有进度条与防重复点击。
+- `adb pull` 这类传输命令在后端自动使用不低于 180000 ms 的超时，无需手动调整；设置弹窗里的子进程超时（1000~120000 ms，默认 15000 ms）作用于 `pm list packages` / `pm path` / 卸载与恢复等普通命令。大文件优先用数据线，无线调试下容易掉到 `offline`。
+- `skipExisting` 默认开启：目标文件已存在且非空即跳过，重跑同一批只补缺失项，中断后可以接着来。需要强制重新提取时清空对应目录或关闭跳过选项。
+- 提取前确认本机磁盘空间充足；`exports/` 体积增长快且已被 `.gitignore` 忽略，不会进版本库。
 
 ## 环境要求
 
@@ -140,7 +264,7 @@ node server.mjs --adb 'D:\tools\platform-tools\adb.exe'
 | `low` | 预装内容、广告、在线服务、反馈与商城类 | 安全 | 可直接精简 |
 | `unknown` | 未收录于目录的包 | 未知 | 按包名启发式推断厂商，`dangerous:false`，请自行确认 |
 
-`gms` / `vending` / `webview` / 开机向导按契约归为 `high`：提示风险但不在 `CRITICAL_PACKAGES` 硬阻断集合里。每条 note 都以「卸载后」开头写明实际影响，危险项写明后果；勾选前把鼠标停在行上看一眼是最省事的习惯。
+`gms` / `vending` / `webview` / 开机向导统一归为 `high`：提示风险但不在 `CRITICAL_PACKAGES` 硬阻断集合里。每条 note 都以「卸载后」开头写明实际影响，危险项写明后果；勾选前把鼠标停在行上看一眼是最省事的习惯。
 
 ## 恢复已卸载应用的步骤
 
@@ -199,6 +323,23 @@ where.exe adb
 **请求很慢 / 按钮点了没反应**
 采集五组 `pm list packages` 命令可能超过 10 秒，界面有 loading 态与防重复点击；结果缓存 60 秒，`refresh=1` 强制重采，卸载/恢复后自动失效。子进程默认超时 15000 ms，可在设置里调大。
 
+**`pm path` 返回空或多行**
+空输出多为包名写错、设备里确实没有这个包，或当前用户下没有可读取的 APK 路径；用 `pm list packages <关键字>` 核对包名即可。已为 user 0 卸载的预装应用仍会正常返回路径，因为 APK 文件还在 system / product 分区。多行输出则是 split APK / App Bundle，每行一个分片，全部都要 pull；只取 `base.apk` 装回会缺资源或安装失败。行首的 `package:` 是固定前缀，工具会自动去掉再 pull。
+
+```powershell
+& 'D:\tools\platform-tools\adb.exe' -s SERIAL shell pm list packages miui
+& 'D:\tools\platform-tools\adb.exe' -s SERIAL shell pm path com.google.android.apps.bard
+```
+
+**提取大 APK 慢或失败**
+`adb pull` 传输命令在后端自动使用不低于 180000 ms 的超时，检查本机剩余磁盘空间与 USB 连接即可；设置弹窗里的子进程超时（默认 15000 ms，范围 1000~120000 ms）作用于 `pm list packages` / `pm path` 等普通命令，大批量提取优先用数据线，无线调试下容易掉到 `offline`。失败后看日志抽屉里的 adb 输出与导出记录里已成功的文件，`skipExisting` 会跳过已存在且非空的文件，修好连接后重跑同一批即可接着来。目标目录不存在时工具会自动创建；清理 `exports/` 下对应目录即可重新开始。
+
+```powershell
+Invoke-RestMethod 'http://127.0.0.1:8787/api/health' | Select-Object exportsDir, adbPath, demo
+Invoke-RestMethod 'http://127.0.0.1:8787/api/apk/exports' | ConvertTo-Json -Depth 6
+Get-PSDrive -PSProvider FileSystem | Select-Object Name, Used, Free
+```
+
 ## 目录结构
 
 ```text
@@ -213,7 +354,8 @@ adb-app-manager/
 ├── lib/
 │   ├── adb.mjs               # adb 探测与子进程封装
 │   ├── store.mjs             # config / history 读写
-│   └── catalog.mjs           # 应用目录、预设、风险分级、lookup / detectVendor
+│   ├── catalog.mjs           # 应用目录、预设、风险分级、lookup / detectVendor
+│   └── pull.mjs              # pm path / adb pull / 大小与 SHA-256 导出记录
 ├── public/
 │   ├── index.html
 │   ├── styles.css
@@ -221,10 +363,14 @@ adb-app-manager/
 ├── docs/
 │   ├── USB调试指南.md
 │   └── screenshots/main.png  # 主界面截图
+├── exports/                  # 提取的 APK，运行时生成，已被 .gitignore 忽略
+│   └── <serial>/<包名>/      # base.apk + split_config.*.apk
 └── data/                     # 运行时生成，已被 .gitignore 忽略
     ├── config.json
     └── history.json
 ```
+
+`lib/pull.mjs` 负责 `pm path` 解析、`adb pull` 与导出记录（文件大小、SHA-256）；`exports/` 与 `data/` 均为运行时生成，已被 `.gitignore` 忽略，提取出来的 APK 不会进版本库。
 
 ## 免责与许可
 
